@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline OODA 5-Nodos — IR-Sentinel</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --green-bg: rgba(63, 185, 80, 0.15);
+      --red: #f85149;
+      --red-bg: rgba(248, 81, 73, 0.15);
+      --yellow: #d29922;
+      --yellow-bg: rgba(210, 153, 34, 0.15);
+      --purple: #bc8cff;
+      --purple-bg: rgba(188, 140, 255, 0.15);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 0;
+      margin: 0;
+      line-height: 1.5;
+    }
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 28px;
+      background: #161b22;
+      border-bottom: 1px solid var(--border);
+    }
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: var(--text-bright);
+      text-decoration: none;
+      font-size: 1.1rem;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: color 0.2s;
+    }
+    .nav-link:hover, .nav-link.active { color: var(--accent); }
+    .container {
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .header-title h1 {
+      color: var(--text-bright);
+      font-size: 1.45rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      background: #21262d;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover { background: #30363d; border-color: #8b949e; }
+    .btn-primary { background: #238636; border-color: rgba(240,246,252,0.1); color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-purple { background: #8957e5; border-color: rgba(240,246,252,0.1); color: #fff; }
+    .btn-purple:hover { background: #9e6cf2; }
+    .btn-voice { background: #8957e5; border-color: rgba(240,246,252,0.1); color: #fff; }
+    .btn-voice.recording { background: #f85149; animation: pulse-red 1.2s infinite; }
+    @keyframes pulse-red {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.7); }
+      70% { transform: scale(1.04); box-shadow: 0 0 0 10px rgba(248, 81, 73, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .badge-green { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+    .badge-purple { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple); }
+    .badge-blue { background: rgba(88, 166, 255, 0.15); color: var(--accent); border: 1px solid var(--accent); }
+    .badge-yellow { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow); }
+
+    /* Pipeline Stepper */
+    .stepper-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .stepper-title {
+      font-size: 1.05rem;
+      color: var(--text-bright);
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      position: relative;
+    }
+    .step-node {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .step-node.completed {
+      border-color: var(--green);
+      background: rgba(63, 185, 80, 0.05);
+    }
+    .step-num {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--purple);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .step-name {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 6px;
+    }
+    .step-artifact {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .alert-box {
+      background: #1f242c;
+      border-left: 4px solid var(--purple);
+      padding: 12px 18px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .alert-text {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.88rem;
+      color: #e6edf3;
+    }
+
+    /* Grid & Artifacts Tabs */
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 992px) {
+      .grid-layout { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-bright); background: #21262d; }
+    .tab-btn.active { color: #fff; background: var(--purple); }
+    .code-view {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.84rem;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #e6edf3;
+    }
+
+    /* Chat Section */
+    .chat-messages {
+      max-height: 340px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      background: #0d1117;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .message-user { align-self: flex-end; background: #1f3b5c; border: 1px solid var(--accent); color: #f0f6fc; }
+    .message-agent { align-self: flex-start; background: #1c2128; border: 1px solid var(--border); color: #c9d1d9; }
+    .message-sender { font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .chat-controls { display: flex; gap: 8px; align-items: center; }
+    .chat-input {
+      flex: 1;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      color: var(--text-bright);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .chat-input:focus { border-color: var(--purple); }
+    .tts-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; }
+    .tts-btn:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar">
+    <a href="/" class="navbar-brand">
+      <span>🛡️</span>
+      <span>IR-Sentinel Suite</span>
+    </a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Inicio</a>
+      <a href="/cases/api502" class="nav-link">Caso 1: api502</a>
+      <a href="/cases/ir-pipeline" class="nav-link active">Caso 2: Pipeline OODA</a>
+      <a href="/engram/memories" class="nav-link" target="_blank">Memoria Engram</a>
+      <a href="http://127.0.0.1:6080/" class="nav-link" target="_blank">Linux noVNC</a>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <header class="header">
+      <div class="header-title">
+        <h1>⚡ Pipeline Autónomo OODA de 5 Nodos <span class="badge badge-purple" id="badge-pipeline-status">PIPELINE ACTIVO</span></h1>
+        <p>Orquestación multi-etapa con generación de artefactos en <code>.ir_state/</code> e inferencia Kostra (GLM-5.2)</p>
+      </div>
+      <div class="header-controls">
+        <button class="btn" id="btn-custom-alert" onclick="promptCustomAlert()">✏️ Inyectar Alerta</button>
+        <button class="btn btn-purple" id="btn-run-pipeline" onclick="runPipeline()">▶ Ejecutar Pipeline (5 Nodos)</button>
+        <button class="btn" onclick="fetchState()">🔄 Actualizar</button>
+      </div>
+    </header>
+
+    <!-- Alerta entrante -->
+    <div class="alert-box">
+      <div>
+        <div style="font-size:0.75rem; color:var(--purple); font-weight:700; text-transform:uppercase; margin-bottom:2px;">Alerta Ingerida (incoming_alert.log):</div>
+        <div class="alert-text" id="alert-content">Cargando alerta...</div>
+      </div>
+      <span class="badge badge-blue" id="alert-state-badge">ESTADO: LISTO</span>
+    </div>
+
+    <!-- Stepper de 5 Nodos -->
+    <div class="stepper-container">
+      <div class="stepper-title">
+        <span>🔄 Fases del Bucle OODA (Observar ➔ Orientar ➔ Decidir ➔ Actuar ➔ Verificar)</span>
+        <span class="badge badge-green" id="stepper-summary">5/5 Nodos Sincronizados</span>
+      </div>
+      <div class="stepper">
+        <div class="step-node completed" id="node-1">
+          <div class="step-num">Nodo 1</div>
+          <div class="step-name">Observador</div>
+          <div class="step-artifact">incident.json</div>
+        </div>
+        <div class="step-node completed" id="node-2">
+          <div class="step-num">Nodo 2</div>
+          <div class="step-name">Analista</div>
+          <div class="step-artifact">diagnosis.json</div>
+        </div>
+        <div class="step-node completed" id="node-3">
+          <div class="step-num">Nodo 3</div>
+          <div class="step-name">Contención</div>
+          <div class="step-artifact">containment.json</div>
+        </div>
+        <div class="step-node completed" id="node-4">
+          <div class="step-num">Nodo 4</div>
+          <div class="step-name">Resolución</div>
+          <div class="step-artifact">resolution.json</div>
+        </div>
+        <div class="step-node completed" id="node-5">
+          <div class="step-num">Nodo 5</div>
+          <div class="step-name">Verificación</div>
+          <div class="step-artifact">postmortem.md</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layout Grid: Visor de Artefactos y Chat -->
+    <div class="grid-layout">
+
+      <!-- Visor de Artefactos -->
+      <div class="card">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="showTab('incident')">1. incident.json</button>
+          <button class="tab-btn" onclick="showTab('diagnosis')">2. diagnosis.json</button>
+          <button class="tab-btn" onclick="showTab('containment')">3. containment.json</button>
+          <button class="tab-btn" onclick="showTab('resolution')">4. resolution.json</button>
+          <button class="tab-btn" onclick="showTab('postmortem')">5. postmortem.md</button>
+        </div>
+        <div class="code-view" id="artifact-content">Cargando artefactos de .ir_state/...</div>
+      </div>
+
+      <!-- Chat y Voz con el Agente -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">
+          <h2 style="font-size:1rem; color:var(--text-bright);">💬 Chat & Notas de Voz con IR-Sentinel</h2>
+          <span class="badge badge-purple">Kostra (GLM-5.2)</span>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="message message-agent">
+            <div class="message-sender">
+              <span>🤖 IR-Sentinel</span>
+              <button class="tts-btn" onclick="speakText(this.parentElement.nextElementSibling.innerText)">🔊</button>
+            </div>
+            <div>Hola. He cargado el estado del <strong>Pipeline OODA de 5 Nodos</strong>. Puedes preguntarme sobre la causa raíz, la contención o dictarme una nota de voz 🎙️ para analizar una nueva alerta.</div>
+          </div>
+        </div>
+
+        <div class="chat-controls">
+          <input type="text" id="chat-input" class="chat-input" placeholder="Pregunta sobre el incidente o dicta por voz..." onkeydown="if(event.key==='Enter') sendChatMessage()" />
+          <button class="btn btn-voice" id="btn-voice" onclick="toggleVoiceRecording()">🎙️ <span id="voice-text">Voz</span></button>
+          <button class="btn btn-purple" id="btn-send" onclick="sendChatMessage()">Enviar</button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let artifactsData = {};
+    let activeTab = "incident";
+    let recognition = null;
+    let isRecording = false;
+
+    // Speech Recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'es-CL';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        isRecording = true;
+        document.getElementById("btn-voice").className = "btn btn-voice recording";
+        document.getElementById("voice-text").textContent = "Escuchando...";
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        document.getElementById("chat-input").value = transcript;
+      };
+
+      recognition.onend = () => {
+        isRecording = false;
+        document.getElementById("btn-voice").className = "btn btn-voice";
+        document.getElementById("voice-text").textContent = "Voz";
+      };
+    }
+
+    function toggleVoiceRecording() {
+      if (!recognition) {
+        alert("Reconocimiento de voz no disponible en este navegador. Escribe el mensaje.");
+        return;
+      }
+      if (isRecording) {
+        recognition.stop();
+      } else {
+        document.getElementById("chat-input").value = "";
+        recognition.start();
+      }
+    }
+
+    function speakText(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*_#`➔]/g, '').replace(/\[.*?\]/g, '');
+        const utt = new SpeechSynthesisUtterance(clean);
+        utt.lang = 'es-LA';
+        window.speechSynthesis.speak(utt);
+      }
+    }
+
+    function showTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      event.target.classList.add("active");
+      renderActiveTab();
+    }
+
+    function renderActiveTab() {
+      const container = document.getElementById("artifact-content");
+      if (activeTab === "incident") {
+        container.textContent = JSON.stringify(artifactsData.incident || { status: "no data" }, null, 2);
+      } else if (activeTab === "diagnosis") {
+        container.textContent = JSON.stringify(artifactsData.diagnosis || { status: "no data" }, null, 2);
+      } else if (activeTab === "containment") {
+        container.textContent = JSON.stringify(artifactsData.containment || { status: "no data" }, null, 2);
+      } else if (activeTab === "resolution") {
+        container.textContent = JSON.stringify(artifactsData.resolution || { status: "no data" }, null, 2);
+      } else if (activeTab === "postmortem") {
+        container.textContent = artifactsData.postmortem || "Sin postmortem generado aún.";
+      }
+    }
+
+    async function fetchState() {
+      try {
+        const res = await fetch("/api/pipeline/state");
+        if (!res.ok) return;
+        artifactsData = await res.json();
+        
+        document.getElementById("alert-content").textContent = artifactsData.incomingAlert || "N/A";
+        document.getElementById("alert-state-badge").textContent = "ESTADO: " + (artifactsData.state || "LISTO");
+        renderActiveTab();
+      } catch (e) {
+        console.error("Error fetching state:", e);
+      }
+    }
+
+    async function runPipeline() {
+      const btn = document.getElementById("btn-run-pipeline");
+      btn.disabled = true;
+      btn.textContent = "⏳ Ejecutando 5 Nodos...";
+      try {
+        const res = await fetch("/api/pipeline/run", { method: "POST" });
+        artifactsData = await res.json();
+        renderActiveTab();
+        fetchState();
+        addMessageToChat("IR-Sentinel", "Pipeline completado con éxito. Se ejecutaron los 5 nodos OODA y se actualizaron los artefactos en .ir_state/.", "agent");
+      } catch (e) {
+        alert("Error ejecutando pipeline: " + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "▶ Ejecutar Pipeline (5 Nodos)";
+      }
+    }
+
+    async function promptCustomAlert() {
+      const custom = prompt("Ingresa el texto de la alerta para incoming_alert.log:", "ERROR: Timeout en servicio web a las 10:32:15");
+      if (!custom) return;
+      try {
+        await fetch("/api/pipeline/alert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ alert: custom })
+        });
+        await fetchState();
+      } catch (e) {
+        alert("Error inyectando alerta: " + e.message);
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById("chat-input");
+      const message = input.value.trim();
+      if (!message) return;
+
+      input.value = "";
+      addMessageToChat("Operador", message, "user");
+
+      const btn = document.getElementById("btn-send");
+      btn.disabled = true;
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        addMessageToChat("IR-Sentinel", data.message || "Listo.", "agent");
+        speakText(data.message || "");
+      } catch (e) {
+        addMessageToChat("IR-Sentinel", "Error: " + e.message, "agent");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function addMessageToChat(sender, text, type) {
+      const container = document.getElementById("chat-messages");
+      const msgDiv = document.createElement("div");
+      msgDiv.className = "message message-" + type;
+      msgDiv.innerHTML = '<div class="message-sender"><span>' + (type === "user" ? "👤 " : "🤖 ") + sender + '</span>' + 
+        (type === "agent" ? '<button class="tts-btn" onclick="speakText(this.parentElement.nextElementSibling.innerText)">🔊</button>' : '') + 
+        '</div><div style="white-space:pre-wrap;">' + escapeHtml(text) + '</div>';
+      container.appendChild(msgDiv);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    fetchState();
+  </script>
+</body>
+</html>

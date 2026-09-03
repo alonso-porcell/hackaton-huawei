@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IR-Sentinel — Suite de Respuesta Autónoma a Incidentes</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --card-hover: #1c2128;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --green-bg: rgba(63, 185, 80, 0.15);
+      --red: #f85149;
+      --red-bg: rgba(248, 81, 73, 0.15);
+      --yellow: #d29922;
+      --yellow-bg: rgba(210, 153, 34, 0.15);
+      --purple: #bc8cff;
+      --purple-bg: rgba(188, 140, 255, 0.15);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 0;
+      margin: 0;
+      line-height: 1.6;
+    }
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 32px;
+      background: #161b22;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--text-bright);
+      text-decoration: none;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .nav-link:hover { color: var(--accent); }
+    .hero {
+      text-align: center;
+      padding: 60px 20px 40px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .badge-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      background: var(--purple-bg);
+      color: var(--purple);
+      border: 1px solid var(--purple);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: 2.7rem;
+      color: var(--text-bright);
+      margin-bottom: 16px;
+      line-height: 1.2;
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 760px;
+      margin: 0 auto 32px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      max-width: 900px;
+      margin: 0 auto 48px;
+      padding: 0 20px;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .kpi-num {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .kpi-label {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .cases-container {
+      max-width: 1100px;
+      margin: 0 auto 60px;
+      padding: 0 24px;
+    }
+    .section-title {
+      font-size: 1.5rem;
+      color: var(--text-bright);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cases-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 24px;
+    }
+    @media (max-width: 768px) {
+      .cases-grid { grid-template-columns: 1fr; }
+    }
+    .case-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .case-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      background: var(--card-hover);
+    }
+    .case-tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 14px;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .case-tag-1 { background: var(--blue-bg); color: var(--accent); border: 1px solid var(--accent); }
+    .case-tag-2 { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple); }
+    .case-title {
+      font-size: 1.35rem;
+      color: var(--text-bright);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .case-desc {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      flex-grow: 1;
+    }
+    .case-features {
+      list-style: none;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 0.88rem;
+    }
+    .case-features li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      background: #21262d;
+      color: var(--text-bright);
+      border: 1px solid var(--border);
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: #238636; border-color: rgba(240,246,252,0.1); color: #fff; }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-purple { background: #8957e5; border-color: rgba(240,246,252,0.1); color: #fff; }
+    .btn-purple:hover { background: #9e6cf2; }
+    .footer {
+      text-align: center;
+      padding: 32px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      background: #161b22;
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar">
+    <a href="/" class="navbar-brand">
+      <span>🛡️</span>
+      <span>IR-Sentinel Suite</span>
+    </a>
+    <div class="nav-links">
+      <a href="/cases/api502" class="nav-link">Caso 1: api502</a>
+      <a href="/cases/ir-pipeline" class="nav-link">Caso 2: Pipeline OODA</a>
+      <a href="/engram/memories" class="nav-link" target="_blank">Memoria Engram</a>
+      <a href="http://127.0.0.1:6080/" class="nav-link" target="_blank">Linux noVNC (:6080)</a>
+      <a href="https://github.com/alonso-porcell/hackaton-huawei" class="btn" target="_blank" style="padding: 6px 12px; font-size: 0.85rem;">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="badge-hero">
+      <span>⚡ AI Agent Hackathon — OpenCode + Kostra (GLM-5.2)</span>
+    </div>
+    <h1>Plataforma Autónoma de Incident Response</h1>
+    <p>
+      Diagnóstico determinista, mitigación no invasiva, ejecución basada en políticas de autonomía y generación de post-mortems auditables con voz y telemetría en tiempo real.
+    </p>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-num">&lt; 3 min</div>
+        <div class="kpi-label">Tiempo Medio de Recuperación (MTTR)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-num">100%</div>
+        <div class="kpi-label">Acciones Reversibles (Snapshots)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-num">&gt; 90%</div>
+        <div class="kpi-label">Ahorro de Contexto / Tokens</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-num">GLM-5.2</div>
+        <div class="kpi-label">Inferencia Kostra Cloud</div>
+      </div>
+    </div>
+  </section>
+
+  <main class="cases-container">
+    <h2 class="section-title">📂 Casos de Demostración Operativa</h2>
+
+    <div class="cases-grid">
+
+      <!-- CASO 1: api502 -->
+      <div class="case-card">
+        <div>
+          <span class="case-tag case-tag-1">Caso Principal • Microservicios</span>
+          <h3 class="case-title">🌐 Caso 1: Gateway Nginx & API 502</h3>
+          <p class="case-desc">
+            Simula un error 502 Bad Gateway por desalineación de upstream en Nginx mientras FastAPI opera saludablemente. El agente evalúa telemetría cruzada, crea snapshots, restaura la configuración, valida con <code>nginx -t</code> y verifica el retorno a HTTP 200.
+          </p>
+          <ul class="case-features">
+            <li><span>✓</span> Telemetría de Gateway y Backend en vivo</li>
+            <li><span>✓</span> Optimizador de Tokens y deduplicación de logs</li>
+            <li><span>✓</span> Matriz de Política de Autonomía SRE</li>
+            <li><span>✓</span> Chat interactivo con Notas de Voz (🎙️ / 🔊)</li>
+            <li><span>✓</span> 8 Herramientas MCP con aislamiento estricto</li>
+          </ul>
+        </div>
+        <a href="/cases/api502" class="btn btn-primary">Abrir Dashboard api502 ➔</a>
+      </div>
+
+      <!-- CASO 2: ir-pipeline -->
+      <div class="case-card">
+        <div>
+          <span class="case-tag case-tag-2">Caso Partner • Pipeline OODA</span>
+          <h3 class="case-title">⚡ Caso 2: Pipeline Autónomo de 5 Nodos</h3>
+          <p class="case-desc">
+            Orquestación multi-etapa resiliente basada en el bucle OODA. Ejecuta 5 nodos especializados (Observador ➔ Analista ➔ Contención ➔ Resolución ➔ Verificación), formula hipótesis Red/Blue/Auditor y genera artefactos estructurados en <code>.ir_state/</code>.
+          </p>
+          <ul class="case-features">
+            <li><span>✓</span> Stepper visual en tiempo real de los 5 Nodos</li>
+            <li><span>✓</span> Visor interactivo de artefactos JSON y Post-Mortem MD</li>
+            <li><span>✓</span> Inyección dinámica de alertas de producción</li>
+            <li><span>✓</span> Ejecución autónoma con Kostra GLM-5.2</li>
+            <li><span>✓</span> Chat y Notas de Voz (🎙️ / 🔊) con IR-Sentinel</li>
+          </ul>
+        </div>
+        <a href="/cases/ir-pipeline" class="btn btn-purple">Abrir Pipeline Dashboard ➔</a>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>IR-Sentinel — Desarrollado para la AI Agent Hackathon con OpenCode, Kostra Cloud, GLM-5.2 y Huawei Cloud.</p>
+  </footer>
+
+</body>
+</html>

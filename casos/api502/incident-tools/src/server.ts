@@ -11,7 +11,10 @@ import {
   readLogs,
   runDemoRecovery,
 } from "./control.js";
+import { renderLandingHtml } from "./landing.js";
 import { renderDashboardHtml } from "./dashboard.js";
+import { renderPipelineDashboardHtml } from "./pipeline-dashboard.js";
+import { getPipelineState, runOodaPipeline, setIncomingAlert } from "./pipeline.js";
 import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
 import {
   deleteMemory,
@@ -36,7 +39,14 @@ app.use(
 );
 app.use(express.json());
 
+// Landing Page
 app.get("/", async (_request, response) => {
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.send(await renderLandingHtml());
+});
+
+// Caso 1: api502
+app.get("/cases/api502", async (_request, response) => {
   response.setHeader("content-type", "text/html; charset=utf-8");
   response.send(await renderDashboardHtml());
 });
@@ -44,6 +54,45 @@ app.get("/", async (_request, response) => {
 app.get("/dashboard", async (_request, response) => {
   response.setHeader("content-type", "text/html; charset=utf-8");
   response.send(await renderDashboardHtml());
+});
+
+// Caso 2: ir-pipeline (5 Nodos)
+app.get("/cases/ir-pipeline", async (_request, response) => {
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.send(await renderPipelineDashboardHtml());
+});
+
+// Pipeline API endpoints
+app.get("/api/pipeline/state", async (_request, response, next) => {
+  try {
+    const state = await getPipelineState();
+    response.json(state);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/pipeline/run", async (_request, response, next) => {
+  try {
+    const result = await runOodaPipeline();
+    response.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/pipeline/alert", async (request, response, next) => {
+  try {
+    const alert = String(request.body?.alert ?? "");
+    if (!alert.trim()) {
+      response.status(400).json({ error: "alert text is required" });
+      return;
+    }
+    const result = await setIncomingAlert(alert);
+    response.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.post("/api/chat", async (request, response, next) => {

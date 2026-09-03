@@ -307,10 +307,53 @@
       padding: 2px 4px;
       border-radius: 4px;
     }
-    .tts-btn:hover { color: var(--text-bright); background: rgba(255,255,255,0.1); }
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 28px;
+      background: #161b22;
+      border-bottom: 1px solid var(--border);
+      margin: -24px -24px 24px -24px;
+    }
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: var(--text-bright);
+      text-decoration: none;
+      font-size: 1.1rem;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: color 0.2s;
+    }
+    .nav-link:hover, .nav-link.active { color: var(--accent); }
   </style>
 </head>
 <body>
+
+  <nav class="navbar">
+    <a href="/" class="navbar-brand">
+      <span>🛡️</span>
+      <span>IR-Sentinel Suite</span>
+    </a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Inicio</a>
+      <a href="/cases/api502" class="nav-link active">Caso 1: api502</a>
+      <a href="/cases/ir-pipeline" class="nav-link">Caso 2: Pipeline OODA</a>
+      <a href="/engram/memories" class="nav-link" target="_blank">Memoria Engram</a>
+      <a href="http://127.0.0.1:6080/" class="nav-link" target="_blank">Linux noVNC</a>
+    </div>
+  </nav>
 
   <header class="header">
     <div class="header-title">

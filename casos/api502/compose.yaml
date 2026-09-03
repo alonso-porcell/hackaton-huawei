@@ -79,6 +79,9 @@ services:
     volumes:
       - nginx_control:/control
       - nginx_logs:/logs:ro
+      - ../../.ir_state:/app/.ir_state
+      - ../../prompts:/app/prompts:ro
+      - ../../incoming_alert.log:/app/incoming_alert.log
     security_opt:
       - no-new-privileges:true
 

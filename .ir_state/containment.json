@@ -1,10 +1,11 @@
 {
   "actions": [
-    "Reiniciado pool de conexiones de auth-service (mitigacion sintetizada)"
+    "Aumentado tamaño de max_connections en postgres-db",
+    "Reiniciado pool de conexiones de auth-service"
   ],
   "status": "stable",
   "log": {
-    "source": "orchestrator-fallback",
+    "source": "ir-agent-node3",
     "alert": "ERROR: Timeout en servicio web a las 10:32:15"
   }
 }
