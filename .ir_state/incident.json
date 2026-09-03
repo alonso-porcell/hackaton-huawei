@@ -1,8 +1,7 @@
 {
-  "severity": "CRITICAL",
+  "severity": "ERROR",
   "affected_services": [
-    "ssh",
-    "firewall"
+    "servicio web"
   ],
-  "log_summary": "SSH brute force attack detected from 192.168.1.50; Firewall rule misconfiguration"
+  "log_summary": "Timeout en servicio web a las 10:32:15"
 }

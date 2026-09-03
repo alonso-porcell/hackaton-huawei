@@ -12,6 +12,7 @@ import {
   verifyRecovery,
 } from "./control.js";
 import { generateEmotionalResponse } from "./emotional-handler.js";
+import { recordIncident, searchMemory } from "./engram.js";
 
 
 function toolResult(value: object) {
@@ -153,6 +154,55 @@ export function createIncidentMcpServer(): McpServer {
           platformTone: input.platform_tone,
         }),
       ),
+  );
+
+  server.registerTool(
+    "search_memory",
+    {
+      description:
+        "Busca incidentes similares en la memoria persistente de Engram (SQLite/FTS5). Devuelve como máximo 5 recuerdos relevantes con metadatos de procedencia.",
+      inputSchema: z.object({
+        query: z.string().min(1).max(500),
+        limit: z.number().int().min(1).max(20).default(5),
+        service: z.string().optional(),
+        kind: z.string().optional(),
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    async ({ query, limit, service, kind }) =>
+      toolResult({
+        query,
+        results: searchMemory(query, { limit, service, kind }),
+      }),
+  );
+
+  server.registerTool(
+    "record_incident",
+    {
+      description:
+        "Registra un aprendizaje verificado y sanitizado en Engram. Sólo conclusiones confirmadas; los secretos se redactan automáticamente.",
+      inputSchema: z.object({
+        kind: z
+          .enum([
+            "incident",
+            "root_cause",
+            "mitigation",
+            "lesson",
+            "inconsistency",
+            "audit",
+          ])
+          .describe("Tipo de aprendizaje registrado"),
+        service: z.string().optional(),
+        symptom: z.string().optional(),
+        root_cause: z.string().optional(),
+        resolution: z.string().optional(),
+        confidence: z.number().int().min(0).max(100).default(0),
+        verified: z.boolean().default(false),
+        content: z.string().min(1).max(5000),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async (input) => toolResult({ recorded: recordIncident(input) }),
   );
 
   return server;

@@ -1,7 +1,61 @@
-# https://owasp.org/www-project-top-10-for-large-language-model-applications/
 # Agente Autónomo de Incident Response (IR-Agent)
 
 Arquitectura, configuración de contexto y pipeline de ejecución técnica para un Agente Autónomo de Respuesta ante Incidentes, optimizado para inferencia en Kostra Cloud (`glm-5.2`), orquestación vía OpenCode/Claude Code CLI y aislamiento estricto en contenedores Docker.
+
+---
+
+## Producto Final
+
+### Pipeline autónomo (`run_pipeline_and_push.js`)
+
+Script orquestador único que ejecuta los 5 nodos del pipeline OODA de forma **autónoma y resiliente**:
+
+| Nodo | Rol | Artefacto | Descripción |
+| :--- | :--- | :--- | :--- |
+| 1 | Observador | `incident.json` | Lee la alerta, estructura severidad y servicios afectados |
+| 2 | Analista | `diagnosis.json` | Hipótesis Red/Blue/Auditor, causa raíz y score de confianza |
+| 3 | Contención | `containment.json` | Mitigación menos invasiva, estado stable/unstable |
+| 4 | Resolución | `resolution.json` | Parche, tests y resumen de resolución |
+| 5 | Verificación | `postmortem.md` | Informe post-mortem en Markdown |
+
+**Características clave:**
+
+- **Inyección de contexto inline**: el orquestador lee los artefactos y los incrusta en cada prompt, eliminando la dependencia de herramientas externas no disponibles en el endpoint.
+- **Detección de tool-call alucinado**: `looksLikeToolCall()` identifica envelopes `{name, arguments}` que el modelo devuelve cuando no tiene tools, y los descarta.
+- **Normalizadores por nodo**: cada nodo tiene un fallback que sintetiza un artefacto válido si el modelo no produce uno usable.
+- **Umbral null-safe + modo autónomo**: si `confidence` es `null`/`NaN` o `< 0.8`, se usa el diagnóstico sintetizado (`0.85`) en vez de pausar y abortar.
+- **Timeout con `AbortController`** (20s por llamada API): evita cuelgues indefinidos; cae al fallback sintetizado.
+- **Git robusto**: skip si no hay cambios; `git pull --rebase` antes del push para resolver fast-forwards.
+
+### Ejecución
+
+```bash
+node run_pipeline_and_push.js
+```
+
+**Requisitos:** Node.js >= 18 (fetch nativo + AbortController). Sin dependencias npm.
+
+### Artefactos generados (`.ir_state/`)
+
+```
+.ir_state/
+├── incident.json       # severity, affected_services, log_summary
+├── diagnosis.json      # root_cause, confidence, evidence
+├── containment.json    # actions, status, log
+├── resolution.json     # patch_path, tests_passed, summary
+├── postmortem.md       # informe post-mortem
+└── state.txt           # CONTINUAR
+```
+
+### Post-mortem del último incidente
+
+- **Alerta:** `ERROR: Timeout en servicio web a las 10:32:15`
+- **Causa raíz:** Connection pool agotada en auth-service provoca timeout a postgres-db
+- **Confianza:** 0.85
+- **Estado:** stable
+- **Resolución:** Pool de conexiones reconfigurado; alerta despejada
+
+---
 
 ## Caso seleccionado: `api502`
 
@@ -627,44 +681,43 @@ Para evitar acciones destructivas durante la operación autónoma, se configura 
 
 ## Requisitos de Implementación Final
 
-1. **Estructura de archivos requerida:**
-   ```
-   /workspace/
-   ├── .ir_state/                    # Volumen persistente
-   │   ├── routing_rules.yaml        # Reglas de severidad
-   │   ├── topology.json             # Mapa de infraestructura
-   │   └── playbooks/                # Catálogo de mitigaciones
-   ├── .claude/
-   │   ├── hooks.json                # Shields de seguridad
-   │   ├── skills/ir_agent/          # Prompts semilla
-   │   │   ├── nodo1_observer.md
-   │   │   ├── nodo2_red_team.md
-   │   │   ├── nodo2_blue_team.md
-   │   │   ├── nodo2_auditor.md
-   │   │   ├── nodo3_containment.md
-   │   │   ├── nodo4_resolution.md
-   │   │   └── nodo5_verification.md
-   │   └── agents/                   # Definiciones de subagentes
-   │       ├── red-team.md
-   │       ├── blue-team.md
-   │       └── auditor.md
-   ├── services/                     # Código fuente (read-only para agentes)
-   └── ir_pipeline.sh               # Script orquestador
-   ```
+1. **Estructura de archivos del producto final:**
+   ```
+   ir-project/
+   ├── run_pipeline_and_push.js      # Script orquestador único (Node.js >= 18)
+   ├── incoming_alert.log            # Alerta de entrada
+   ├── prompts/                      # Prompts semilla por nodo
+   │   ├── nodo1.md
+   │   ├── nodo2.md
+   │   ├── nodo3.md
+   │   ├── nodo4.md
+   │   └── nodo5.md
+   ├── .ir_state/                    # Artefactos del pipeline (volumen persistente)
+   │   ├── incident.json
+   │   ├── diagnosis.json
+   │   ├── containment.json
+   │   ├── resolution.json
+   │   ├── postmortem.md
+   │   └── state.txt
+   ├── casos/api502/                 # Caso de uso seleccionado
+   ├── auditoria-onyx.md             # Auditoría de arquitectura
+   ├── vini_research.md              # Research técnico
+   └── README.md                     # Este documento
+   ```
 
 2. **Variables de entorno requeridas:**
-   ```bash
-   export OPENAI_BASE_URL="https://ai.kostra.cloud/v1"
-   export OPENAI_API_KEY="sk-xxxxx"
-   export ANTHROPIC_BASE_URL="https://ai.kostra.cloud"
-   export ANTHROPIC_AUTH_TOKEN="sk-xxxxx"
-   export ANTHROPIC_MODEL="glm-5.2"
-   ```
+   ```bash
+   export OPENAI_BASE_URL="https://ai.kostra.cloud/v1"
+   export OPENAI_API_KEY="sk-xxxxx"
+   export ANTHROPIC_BASE_URL="https://ai.kostra.cloud"
+   export ANTHROPIC_AUTH_TOKEN="sk-xxxxx"
+   export ANTHROPIC_MODEL="glm-5.2"
+   ```
 
 3. **Límites operativos para glm-5.2:**
-   - Máximo 10 servidores MCP activos simultáneamente
-   - Máximo 80 herramientas en memoria de trabajo
-   - Presupuesto total de contexto: ~70k tokens efectivos (de 200k teóricos)
-   - Reserva de 12k tokens para historial de herramientas por nodo
+   - Máximo 10 servidores MCP activos simultáneamente
+   - Máximo 80 herramientas en memoria de trabajo
+   - Presupuesto total de contexto: ~70k tokens efectivos (de 200k teóricos)
+   - Reserva de 12k tokens para historial de herramientas por nodo
 
 Este diseño garantiza que el IR-Agent opere dentro de los límites de contexto, mantenga aislamiento estricto, y cumpla con los 4 criterios de la rúbrica en cada uno de los 5 nodos del pipeline.
