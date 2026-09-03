@@ -13,6 +13,7 @@ import {
 } from "./control.js";
 import { renderDashboardHtml } from "./dashboard.js";
 import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
+import { adaptiveEmotionalHandler } from "./emotional-handler.js";
 
 
 const port = Number(process.env.PORT ?? 3001);
@@ -115,14 +116,13 @@ app.post("/mcp", toNodeHandler(mcpHandler));
 app.delete("/mcp", toNodeHandler(mcpHandler));
 
 app.use(
-  (
+  async (
     error: unknown,
-    _request: express.Request,
+    request: express.Request,
     response: express.Response,
     _next: express.NextFunction,
   ) => {
-    const message = error instanceof Error ? error.message : "unexpected error";
-    response.status(500).json({ error: message });
+    await adaptiveEmotionalHandler(error, request, response);
   },
 );
 
