@@ -63,6 +63,8 @@ El caso principal simula una configuración defectuosa de Nginx: el proxy apunta
 
 La propuesta utiliza una arquitectura híbrida: Python/FastAPI y pytest para la API y el simulador; TypeScript con pnpm para el dashboard y las herramientas MCP; además de TDD, tareas atómicas, Gherkin con Cucumber.js y Stryker sobre los componentes TypeScript. Consulta el [detalle del caso `api502`](./casos/api502/) y el [research técnico de Vini](./vini_research.md).
 
+El recorrido completo de decisiones, implementación, problemas resueltos, validación y colaboradores está documentado en el [artículo del caso API502](./docs/articulo-api502.md).
+
 ---
 
 ## 1. Alineación con Rúbrica y Métricas Operativas
