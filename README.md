@@ -121,3 +121,544 @@ La implementación del sistema asciende por fases de madurez estrictas:
 El éxito del IR-Agent se mide por su Precisión Causal (RCA > 92%) y Tiempos (MTTR < 8 minutos). Sin embargo, posee reglas que, de romperse, **descalifican** a la IA automáticamente:
 *   **Prohibido Comandos Destructivos:** Cualquier comando que borre información sin haber guardado un `snapshot` (foto del sistema previo) en `/workspace/.snapshots/` detendrá a la IA de inmediato.
 *   **Fuga de Credenciales:** Dejar expuestas contraseñas o claves API en los registros de código generará un bloqueo inmediato del sistema.
+
+entrega en .md
+
+# Flujo de Trabajo para IR-Agent: 5 Nodos con Operadores
+
+A continuación se presenta el diseño operativo completo del pipeline, integrando los 5 nodos con el ecosistema Kostra Cloud (glm-5.2), OpenCode CLI, hooks de seguridad y la rúbrica de evaluación. Cada nodo se detalla con sus **operadores específicos**, **prompts semilla**, **matriz de ambigüedad** y **validación de rúbrica**.
+
+---
+
+## Diagrama de Flujo General
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  .ir_state/ (Volumen Docker)                    │
+│          ┌──────────────────────────────────────┐               │
+│          │  state.json, evidence/, patches/     │               │
+│          └──────────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
+        ▲         ▲         ▲         ▲         ▲
+        │         │         │         │         │
+   ┌────┴───┐ ┌───┴────┐ ┌──┴────┐ ┌──┴────┐ ┌──┴────┐
+   │ NODO 1 │▶│ NODO 2 │▶│NODO 3 │▶│NODO 4 │▶│NODO 5 │
+   │ Alertas│ │Diagnóst│ │Conten │ │Resol  │ │Verif  │
+   └────────┘ └────────┘ └───────┘ └───────┘ └───────┘
+                    │                    ▲
+                    └────── PAUSA ──────┘
+                     (confianza < 80%)
+```
+
+| Propiedad | Valor |
+|-----------|-------|
+| **Runtime** | Docker `node:18-bullseye` sobre Fedora |
+| **Inferencia** | glm-5.2 vía `ai.kostra.cloud/v1` con `thinking: enabled` |
+| **Orquestador** | OpenCode CLI + bash scripts de encadenamiento |
+| **Memoria** | Archivos `.ir_state/` — sin inyección de historial completo en prompt |
+| **Contexto máx./nodo** | 12k tokens para herramientas + 6k tokens para datos de entrada |
+
+---
+
+## NODO 1 — Observador de Alertas (Ingestión y Triaje)
+
+### Rol en el pipeline
+Fase **Observar** del ciclo OODA. Recibe señales crudas (webhooks, syslog, métricas) y produce un artefacto de incidente clasificado y acotado.
+
+### Operadores
+
+| Operador | Tipo | Función | Herramienta MCP |
+|----------|------|---------|-----------------|
+| `ingest_webhook` | Trigger | Escucha puerto 8080 para alertas entrantes | `webhook_listener` |
+| `parse_severity` | Transform | Extrae nivel P1-P4 según reglas de ruteo | `severity_classifier` |
+| `extract_signature` | Transform | Identifica servicio, stack trace y timestamp | `regex_log_parser` |
+| `window_metrics` | Fetch | Obtiene métricas de la ventana [-15min, +5min] | `fetch_metrics_window` |
+| `deduplicate` | Filter | Descarta alertas duplicadas (misma firma en < 5 min) | `alert_dedup_cache` |
+| `emit_incident_json` | Sink | Escribe `incident.json` en `.ir_state/` con resumen < 2k tokens | `write_state_file` |
+
+### Prompt semilla para glm-5.2 (modo `temperature=0.1`)
+
+```
+Eres el Observador de Alertas del IR-Agent. Tu función es triaje de incidentes entrantes.
+
+ENTRADA: 
+- Webhook payload o syslog crudo (adjunto)
+- Reglas de ruteo: /workspace/.ir_state/routing_rules.yaml
+- Topología de infraestructura: /workspace/.ir_state/topology.json
+
+TAREA:
+1. Determina severidad (P1=crítico producción caído, P2=degradado, P3=warning, P4=info)
+2. Identifica servicios afectados y su dependencia aguas arriba/abajo
+3. Extrae la firma del incidente (tipo de error + componente + stack trace resumido)
+4. Recorta logs a máximo 2000 tokens conservando líneas de error y contexto adyacente
+5. Emite JSON con estructura exacta.
+
+RESTRICCIONES:
+- No modifiques archivos fuera de .ir_state/
+- Si el payload está vacío o malformado, emite severity=P4 con confidence=0
+- No hagas suposiciones sobre causa raíz — eso es tarea del Nodo 2
+
+SALIDA OBLIGATORIA: JSON en /workspace/.ir_state/incident.json
+```
+
+### Matriz de ambigüedad
+
+| Escenario | Comportamiento esperado | Métrica de evaluación |
+|-----------|-------------------------|----------------------|
+| Alerta sin metadatos suficientes | Asigna P3, confidence=0.3, flag `needs_manual_triage: true` | No bloquea el pipeline |
+| Múltiples alertas simultáneas | Agrupa por servicio, emite array con relación `parent_child` | Deduplicación correcta |
+| Webhook malformado (no JSON) | Registra en `evidence/invalid_payload.txt` y emite P4 | No rompe el parser |
+
+### Validación de rúbrica
+
+| Criterio | Peso | Cómo se evalúa |
+|----------|------|----------------|
+| Tareas exitosas | 30% | JSON válido y esquema correcto en todas las ejecuciones |
+| Comportamiento y autonomía | 25% | Deduplica sin intervención, no se detiene ante entradas ambiguas |
+| Uso de herramientas | 25% | Invoca `fetch_metrics_window` solo si hay servicio identificado |
+| Gestión de ambigüedad | 20% | Flag `needs_manual_triage` activado correctamente |
+
+---
+
+## NODO 2 — Analista de Diagnóstico (Hipótesis Causal)
+
+### Rol en el pipeline
+Fase **Orientar y Decidir** del OODA. Ejecuta diagnóstico multihipótesis con patrón Red/Blue/Auditor (3 subagentes paralelos) para evitar anclaje cognitivo.
+
+### Operadores
+
+| Operador | Tipo | Función | Herramienta MCP |
+|----------|------|---------|-----------------|
+| `load_incident` | Fetch | Lee `incident.json` del Nodo 1 | `read_state_file` |
+| `grep_codebase` | Fetch | Busca en código fuente del servicio afectado | `grep_tool` (solo lectura) |
+| `trace_docker` | Fetch | Obtiene stack traces del contenedor afectado | `run_strace_docker` (read-only) |
+| `query_recent_commits` | Fetch | Lista commits de las últimas 2h | `git_log_short` |
+| `red_team_hypothesis` | Analyze | Genera hipótesis de fallo desde perspectiva de ataque/error externo | Subagente Red Team |
+| `blue_team_hypothesis` | Analyze | Genera hipótesis desde perspectiva de bug interno/configuración | Subagente Blue Team |
+| `auditor_synthesis` | Analyze | Compara hipótesis y consolida con score de confianza | Subagente Auditor |
+| `emit_diagnosis_json` | Sink | Escribe `diagnosis.json` con causa raíz + confianza | `write_state_file` |
+
+### Prompt semilla para glm-5.2 (modo `temperature=0.4` — permite asociaciones no obvias)
+
+```
+Eres el Analista de Diagnóstico del IR-Agent. Orquestas 3 subagentes paralelos para determinar causa raíz.
+
+ENTRADA:
+- /workspace/.ir_state/incident.json (del Nodo 1)
+- Código fuente del servicio: /workspace/services/{service_name}/
+- Historial de commits recientes
+- Métricas de telemetría de la ventana del incidente
+
+FLUJO PARALELO:
+[Red Team] → Hipótesis: ¿fallo por ataque externo, carga anómala, entrada maliciosa?
+[Blue Team] → Hipótesis: ¿fallo por bug interno, race condition, memory leak, config errónea?
+[Auditor]   → Recibe ambas hipótesis, las enfrenta contra la evidencia, asigna score de confianza
+
+REGLAS:
+- Cada subagente trabaja en AISLAMIENTO de contexto (no comparten historial)
+- El Auditor solo recibe las hipótesis finales, no el razonamiento completo
+- Si confianza < 80%, la salida DEBE incluir flag `human_validation_required: true`
+- Prohibido modificar archivos de producción o ejecutar comandos con efectos secundarios
+
+SALIDA: /workspace/.ir_state/diagnosis.json
+```
+
+### Matriz de ambigüedad
+
+| Escenario | Comportamiento esperado | Métrica |
+|-----------|-------------------------|---------|
+| Evidencia contradictoria (logs vs métricas) | Auditor asigna confianza < 60% y requiere validación humana | Pausa el pipeline |
+| Servicio con múltiples dependencias | Genera grafo de dependencias y evalúa fallo en cascada | Identifica root vs symptom |
+| Código fuente no disponible (servicio third-party) | Trabaja solo con logs y métricas, marca limitación | No alucina código inexistente |
+
+### Validación de rúbrica
+
+| Criterio | Peso | Cómo se evalúa |
+|----------|------|----------------|
+| Tareas exitosas | 30% | Diagnosis.json con root_cause, confidence_score y evidence válidos |
+| Comportamiento y autonomía | 25% | Los 3 subagentes se ejecutan sin intervención secuencial |
+| Uso de herramientas | 25% | `run_strace_docker` se invoca con timeout y sin modificar el contenedor |
+| Gestión de ambigüedad | 20% | Pausa correcta cuando confianza < 80% |
+
+---
+
+## NODO 3 — Ingeniero de Contención (Respuesta Rápida)
+
+### Rol en el pipeline
+Fase **Actuar** inicial del OODA. Prioriza la disponibilidad inmediata con mitigaciones temporales **no destructivas**. Se ejecuta solo si `confidence >= 80%` o tras validación humana explícita.
+
+### Operadores
+
+| Operador | Tipo | Función | Herramienta MCP |
+|----------|------|---------|-----------------|
+| `load_diagnosis` | Fetch | Lee `diagnosis.json` | `read_state_file` |
+| `check_confidence_gate` | Gate | Bloquea si `confidence < 0.8` y `human_validation != true` | `conditional_gate` |
+| `select_mitigation` | Decide | Elige estrategia según tipo de incidente | `mitigation_playbook` |
+| `apply_rate_limit` | Action | Aplica rate limiting temporal | `k8s_scale_pods`, `apply_firewall_rule` |
+| `toggle_feature` | Action | Desactiva feature flags problemáticos | `toggle_feature_flag` |
+| `revert_commit` | Action | Revierte último commit (con backup previo) | `revert_git_commit` |
+| `emit_containment_log` | Sink | Registra acciones ejecutadas y estado resultante | `write_state_file` |
+
+### Prompt semilla para glm-5.2 (modo `temperature=0.2`)
+
+```
+Eres el Ingeniero de Contención del IR-Agent. Tu prioridad absoluta es restaurar la disponibilidad del servicio con mitigaciones temporales y reversibles.
+
+ENTRADA:
+- /workspace/.ir_state/diagnosis.json
+- /workspace/.ir_state/playbooks/ (catálogo de mitigaciones pre-aprobadas)
+
+GATE DE ENTRADA:
+- Si confidence < 0.8 Y human_validation != true → ABORTAR y escribir flag en state.json
+- Si pasa → continuar
+
+ESTRATEGIAS POR TIPO DE INCIDENTE:
+- Sobrecarga/DoS → rate limiting + escalado horizontal temporal
+- Bug en release reciente → git revert al último commit estable
+- Fuga de memoria → reinicio controlado con drain de conexiones
+- Configuración errónea → restaurar último backup de config
+- Feature flag problemático → desactivar flag
+
+RESTRICCIONES CRÍTICAS:
+- NUNCA ejecutar DROP, DELETE, TRUNCATE o rm -rf
+- Todo cambio DEBE ser reversible
+- Antes de cualquier acción de modificación, crear snapshot/backup
+- Si no hay playbook para el tipo de incidente, detenerse y pedir intervención humana
+
+SALIDA: /workspace/.ir_state/containment_log.json con:
+- Acciones ejecutadas (en orden)
+- Timestamps
+- Estado del sistema post-mitigación
+- Bandera de estabilización (is_stable: true/false)
+```
+
+### Matriz de ambigüedad
+
+| Escenario | Comportamiento esperado |
+|-----------|-------------------------|
+| Confianza < 80% | Detiene el pipeline, notifica, espera input humano |
+| Múltiples mitigaciones posibles | Selecciona la menos invasiva primero, itera si no estabiliza |
+| La mitigación empeora el incidente | Rollback automático al snapshot pre-acción |
+
+---
+
+## NODO 4 — Especialista de Resolución (Parcheo)
+
+### Rol en el pipeline
+Genera la solución definitiva en entorno **clonado** de pruebas. Solo se activa cuando el Nodo 3 confirma estabilización (`is_stable: true`).
+
+### Operadores
+
+| Operador | Tipo | Función | Herramienta MCP |
+|----------|------|---------|-----------------|
+| `load_containment_log` | Fetch | Lee estado estabilizado | `read_state_file` |
+| `clone_environment` | Setup | Crea worktree aislado o contenedor clon | `create_local_snapshot` |
+| `analyze_root_cause_code` | Analyze | Identifica líneas exactas a modificar | `grep_codebase`, `read_file` |
+| `generate_patch` | Transform | Escribe la corrección en el entorno clonado | `edit_file` |
+| `build_and_test` | Validate | Compila y ejecuta tests unitarios | `docker_build`, `execute_unit_tests` |
+| `generate_pr` | Sink | Crea Pull Request o script de migración | `git_create_branch`, `git_commit` |
+
+### Prompt semilla para glm-5.2 (modo `temperature=0.3`)
+
+```
+Eres el Especialista de Resolución del IR-Agent. Generas la solución definitiva al incidente trabajando exclusivamente en un entorno aislado.
+
+ENTRADA:
+- /workspace/.ir_state/diagnosis.json (causa raíz identificada)
+- /workspace/.ir_state/containment_log.json (estado estabilizado)
+- Código fuente: /workspace/services/{service_name}/
+- Entorno clonado: /workspace/snapshots/{incident_id}/
+
+FLUJO OBLIGATORIO:
+1. Crear snapshot del código actual (git worktree o copia completa)
+2. Identificar archivos y líneas exactas que requieren modificación
+3. Generar el parche en el entorno clonado
+4. Ejecutar suite de tests unitarios y de integración
+5. Si tests pasan → generar PR con descripción del fix
+6. Si tests fallan → iterar (máximo 3 intentos, luego pedir ayuda humana)
+
+RESTRICCIONES:
+- Prohibido modificar archivos fuera del entorno clonado
+- El commit debe incluir referencia al incident_id
+- Todo parche debe incluir test que reproduzca el bug y valide la corrección
+- No incluir secretos, tokens ni información sensible en el commit message
+
+SALIDA: 
+- /workspace/.ir_state/resolution.json con ruta del PR/parche
+- Rama de git creada con el fix
+```
+
+---
+
+## NODO 5 — Auditor de Verificación (Post-Mortem y Cierre)
+
+### Rol en el pipeline
+Valida que la resolución no introduzca regresiones, verifica telemetría verde y redacta el informe post-mortem **sanitizado** (sin credenciales ni datos sensibles).
+
+### Operadores
+
+| Operador | Tipo | Función | Herramienta MCP |
+|----------|------|---------|-----------------|
+| `load_resolution` | Fetch | Lee PR/parche aplicado | `read_state_file` |
+| `run_regression` | Validate | Ejecuta suite completa de regresión | `run_regression_suite` |
+| `verify_telemetry` | Validate | Confirma métricas en verde por 15 min | `verify_telemetry_green` |
+| `sanitize_logs` | Transform | Elimina IPs, tokens, secrets de los logs | `sanitize_and_export_report` |
+| `generate_postmortem` | Sink | Redacta informe estructurado | `write_state_file` |
+| `close_ticket` | Sink | Cierra el ticket en el sistema de incidentes | `ticket_close` |
+
+### Prompt semilla para glm-5.2 (modo `temperature=0.1` — máxima precisión)
+
+```
+Eres el Auditor de Verificación del IR-Agent. Validas la resolución completa y generas el cierre formal del incidente.
+
+ENTRADA:
+- /workspace/.ir_state/incident.json
+- /workspace/.ir_state/diagnosis.json
+- /workspace/.ir_state/containment_log.json
+- /workspace/.ir_state/resolution.json
+- Métricas de telemetría (ventana de 30 min post-resolución)
+
+CHECKLIST DE VERIFICACIÓN:
+☐ Suite de regresión completa: todos los tests pasan
+☐ Telemetría en verde durante al menos 15 minutos continuos
+☐ No hay nuevas alertas relacionadas en el sistema
+☐ El PR/parche ha sido revisado por al menos un revisor (o por code-reviewer agent)
+☐ Logs y artefactos han sido sanitizados (sin IPs, tokens, secrets, PII)
+
+INFORME POST-MORTEM (Markdown):
+1. Resumen ejecutivo (qué pasó, impacto, duración)
+2. Línea de tiempo del incidente
+3. Causa raíz (técnica y de proceso)
+4. Acciones de contención ejecutadas
+5. Resolución definitiva aplicada
+6. Lecciones aprendidas
+7. Acciones preventivas recomendadas
+
+RESTRICCIÓN CRÍTICA:
+- SANITIZAR todo el informe antes de escribirlo a disco
+- Eliminar: claves API (sk-*, pk-*, etc.), IPs internas, tokens JWT, contraseñas
+- Si alguna verificación falla, NO cerrar el ticket
+
+SALIDA:
+- /workspace/.ir_state/postmortem.md (sanitizado)
+- /workspace/.ir_state/closure.json (resumen de verificaciones)
+- Ticket cerrado (solo si todas las verificaciones son positivas)
+```
+
+---
+
+## Orquestación Completa: Script de Encadenamiento
+
+El siguiente script bash orquesta los 5 nodos desde el contenedor Docker, respetando gates, pausas y el volumen compartido:
+
+```bash
+#!/bin/bash
+# File: /workspace/ir_pipeline.sh
+# IR-Agent Pipeline Orchestrator
+# Ejecutar dentro del contenedor Docker
+
+set -euo pipefail
+IR_STATE="/workspace/.ir_state"
+TIMESTAMP=$(date -u +%Y%m%dT%H%M%S)
+INCIDENT_ID="${1:-incident_$TIMESTAMP}"
+
+# Inicializar estado
+mkdir -p "$IR_STATE/$INCIDENT_ID/evidence"
+
+echo "=== IR-Agent Pipeline: $INCIDENT_ID ==="
+echo "[$(date)] Iniciando pipeline de 5 nodos"
+
+# --- NODO 1: Observador de Alertas ---
+echo "[$(date)] [NODO 1] Ingestión y Triaje..."
+opencode run \
+  --model glm-5.2 \
+  --temperature 0.1 \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo1_observer.md \
+  --output "$IR_STATE/$INCIDENT_ID/incident.json"
+
+if [ ! -f "$IR_STATE/$INCIDENT_ID/incident.json" ]; then
+  echo "ERROR: Nodo 1 no generó salida. Abortando."
+  exit 1
+fi
+
+SEVERITY=$(jq -r '.severity' "$IR_STATE/$INCIDENT_ID/incident.json")
+echo "[$(date)] [NODO 1] Completado. Severidad: $SEVERITY"
+
+# --- NODO 2: Analista de Diagnóstico ---
+echo "[$(date)] [NODO 2] Diagnóstico multihipótesis..."
+
+# Ejecutar subagentes en paralelo
+opencode run --model glm-5.2 --temperature 0.4 \
+  --agent red-team \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo2_red_team.md \
+  --output "$IR_STATE/$INCIDENT_ID/hypothesis_red.json" &
+
+opencode run --model glm-5.2 --temperature 0.4 \
+  --agent blue-team \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo2_blue_team.md \
+  --output "$IR_STATE/$INCIDENT_ID/hypothesis_blue.json" &
+
+wait
+
+# Auditor sintetiza
+opencode run --model glm-5.2 --temperature 0.2 \
+  --agent auditor \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo2_auditor.md \
+  --output "$IR_STATE/$INCIDENT_ID/diagnosis.json"
+
+CONFIDENCE=$(jq -r '.confidence' "$IR_STATE/$INCIDENT_ID/diagnosis.json")
+echo "[$(date)] [NODO 2] Completado. Confianza: $CONFIDENCE"
+
+# --- GATE: Validación humana si confianza < 80% ---
+HUMAN_VAL=false
+if (( $(echo "$CONFIDENCE < 0.8" | bc -l) )); then
+  echo "[$(date)] [GATE] Confianza baja ($CONFIDENCE). Se requiere validación humana."
+  echo "Revisa: $IR_STATE/$INCIDENT_ID/diagnosis.json"
+  echo "Presiona ENTER para continuar con validación manual, o Ctrl+C para abortar."
+  read -r
+  HUMAN_VAL=true
+  # Actualizar diagnosis con flag de validación humana
+  jq '. + {human_validation: true}' "$IR_STATE/$INCIDENT_ID/diagnosis.json" > tmp.json
+  mv tmp.json "$IR_STATE/$INCIDENT_ID/diagnosis.json"
+fi
+
+# --- NODO 3: Ingeniero de Contención ---
+echo "[$(date)] [NODO 3] Contención..."
+opencode run \
+  --model glm-5.2 \
+  --temperature 0.2 \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo3_containment.md \
+  --output "$IR_STATE/$INCIDENT_ID/containment_log.json"
+
+IS_STABLE=$(jq -r '.is_stable' "$IR_STATE/$INCIDENT_ID/containment_log.json")
+if [ "$IS_STABLE" != "true" ]; then
+  echo "ERROR: La contención no estabilizó el sistema. Revisar manualmente."
+  exit 1
+fi
+echo "[$(date)] [NODO 3] Sistema estabilizado."
+
+# --- NODO 4: Especialista de Resolución ---
+echo "[$(date)] [NODO 4] Generando parche definitivo..."
+opencode run \
+  --model glm-5.2 \
+  --temperature 0.3 \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo4_resolution.md \
+  --output "$IR_STATE/$INCIDENT_ID/resolution.json"
+
+echo "[$(date)] [NODO 4] Parche generado."
+
+# --- NODO 5: Auditor de Verificación ---
+echo "[$(date)] [NODO 5] Verificación y Post-Mortem..."
+echo "Esperando 15 minutos de telemetría verde..."
+sleep 900  # 15 minutos
+
+opencode run \
+  --model glm-5.2 \
+  --temperature 0.1 \
+  --prompt-file /workspace/.claude/skills/ir_agent/nodo5_verification.md \
+  --output "$IR_STATE/$INCIDENT_ID/closure.json"
+
+echo "[$(date)] [NODO 5] Pipeline completado."
+echo "Post-mortem: $IR_STATE/$INCIDENT_ID/postmortem.md"
+echo "=== Pipeline Finalizado: $INCIDENT_ID ==="
+```
+
+---
+
+## Configuración de Hooks de Seguridad (PreToolUse)
+
+Para evitar acciones destructivas durante la operación autónoma, se configura el hook system en OpenCode:
+
+```json
+// ~/.claude/hooks.json (extracto para IR-Agent)
+{
+  "PreToolUse": [
+    {
+      "matcher": "tool == 'Bash' && tool_input.command matches '(rm\\s+-rf|DROP\\s+|DELETE\\s+FROM|truncate|mkfs|dd\\s+if=)'",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo '[IR-SHIELD] ACCIÓN DESTRUCTIVA BLOQUEADA: $TOOL_INPUT_COMMAND' >&2; exit 1"
+        }
+      ]
+    },
+    {
+      "matcher": "tool == 'Bash' && tool_input.command matches '(git\\s+push|kubectl\\s+apply|terraform\\s+apply)'",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo '[IR-SHIELD] Operación de producción requiere confirmación explícita. Añade --confirm al comando si estás seguro.' >&2; exit 1"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "tool == 'Write' && tool_input.file_path matches 'postmortem\\.md$'",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "grep -E '(sk-|pk-|eyJ|-----BEGIN|password|secret)' '$TOOL_INPUT_FILE_PATH' && echo '[IR-SHIELD] ALERTA: Posibles secretos en postmortem!' >&2 || true"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Tabla de Mapeo: Rúbrica → Nodos
+
+| Criterio | Peso | Nodo 1 | Nodo 2 | Nodo 3 | Nodo 4 | Nodo 5 |
+|----------|------|--------|--------|--------|--------|--------|
+| **Tareas exitosas** | 30% | JSON válido | Diagnosis con confianza | Sistema estabilizado | Tests pasan | Regresión verde |
+| **Comportamiento y autonomía** | 25% | Deduplica sin ayuda | Subagentes en paralelo | Selecciona mitigación correcta | Itera hasta 3 intentos | Cierra ticket solo si todo OK |
+| **Uso de herramientas** | 25% | fetch_metrics selectiva | strace con timeout | Backup antes de actuar | Entorno clonado | Sanitización automática |
+| **Gestión de ambigüedad** | 20% | Flag needs_triage | Pausa < 80% | Rollback si empeora | Pide ayuda tras 3 fallos | No cierra si hay alertas nuevas |
+
+---
+
+## Requisitos de Implementación Final
+
+1. **Estructura de archivos requerida:**
+   ```
+   /workspace/
+   ├── .ir_state/                    # Volumen persistente
+   │   ├── routing_rules.yaml        # Reglas de severidad
+   │   ├── topology.json             # Mapa de infraestructura
+   │   └── playbooks/                # Catálogo de mitigaciones
+   ├── .claude/
+   │   ├── hooks.json                # Shields de seguridad
+   │   ├── skills/ir_agent/          # Prompts semilla
+   │   │   ├── nodo1_observer.md
+   │   │   ├── nodo2_red_team.md
+   │   │   ├── nodo2_blue_team.md
+   │   │   ├── nodo2_auditor.md
+   │   │   ├── nodo3_containment.md
+   │   │   ├── nodo4_resolution.md
+   │   │   └── nodo5_verification.md
+   │   └── agents/                   # Definiciones de subagentes
+   │       ├── red-team.md
+   │       ├── blue-team.md
+   │       └── auditor.md
+   ├── services/                     # Código fuente (read-only para agentes)
+   └── ir_pipeline.sh               # Script orquestador
+   ```
+
+2. **Variables de entorno requeridas:**
+   ```bash
+   export OPENAI_BASE_URL="https://ai.kostra.cloud/v1"
+   export OPENAI_API_KEY="sk-xxxxx"
+   export ANTHROPIC_BASE_URL="https://ai.kostra.cloud"
+   export ANTHROPIC_AUTH_TOKEN="sk-xxxxx"
+   export ANTHROPIC_MODEL="glm-5.2"
+   ```
+
+3. **Límites operativos para glm-5.2:**
+   - Máximo 10 servidores MCP activos simultáneamente
+   - Máximo 80 herramientas en memoria de trabajo
+   - Presupuesto total de contexto: ~70k tokens efectivos (de 200k teóricos)
+   - Reserva de 12k tokens para historial de herramientas por nodo
+
+Este diseño garantiza que el IR-Agent opere dentro de los límites de contexto, mantenga aislamiento estricto, y cumpla con los 4 criterios de la rúbrica en cada uno de los 5 nodos del pipeline.
