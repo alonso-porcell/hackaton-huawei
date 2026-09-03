@@ -3,6 +3,12 @@
 
 Arquitectura, configuración de contexto y pipeline de ejecución técnica para un Agente Autónomo de Respuesta ante Incidentes, optimizado para inferencia en Kostra Cloud (`glm-5.2`), orquestación vía OpenCode/Claude Code CLI y aislamiento estricto en contenedores Docker.
 
+## Caso seleccionado: `api502`
+
+El caso principal simula una configuración defectuosa de Nginx: el proxy apunta a un puerto incorrecto y responde `502 Bad Gateway`, aunque la API continúa saludable. El agente deberá reunir evidencia, identificar la causa raíz, respaldar y restaurar la configuración, validarla, recargar Nginx y comprobar que el servicio vuelva a responder `200`.
+
+La propuesta utiliza una arquitectura híbrida: Python/FastAPI y pytest para la API y el simulador; TypeScript con pnpm para el dashboard y las herramientas MCP; además de TDD, tareas atómicas, Gherkin con Cucumber.js y Stryker sobre los componentes TypeScript. Consulta el [detalle del caso `api502`](./casos/api502/) y el [research técnico de Vini](./vini_research.md).
+
 ---
 
 ## 1. Alineación con Rúbrica y Métricas Operativas
