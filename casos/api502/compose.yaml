@@ -57,6 +57,11 @@ services:
       PORT: "3001"
       PROXY_URL: http://gateway/health
       SCENARIO_DIR: /scenarios
+      OPENAI_BASE_URL: https://ai.kostra.cloud/v1
+      KOSTRA_API_KEY_FILE: /run/secrets/kostra_api_key
+      MODEL: glm-5.2
+    secrets:
+      - kostra_api_key
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
@@ -84,3 +89,8 @@ networks:
 volumes:
   nginx_control:
   nginx_logs:
+
+secrets:
+  kostra_api_key:
+    file: ../../../secrets/kostra_api_key.txt
+
