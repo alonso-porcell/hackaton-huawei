@@ -30,7 +30,7 @@ function getDb(): DatabaseSync {
   if (db) return db;
 
   const dir = path.dirname(dbPath);
-  fs.mkdirSync(dir, { recursive: true });
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
   db = new DatabaseSync(dbPath);
   db.exec(`
@@ -196,7 +196,7 @@ export function searchMemory(
     JOIN memories m ON m.rowid = f.rowid
     WHERE memories_fts MATCH ?
   `;
-  const params: unknown[] = [safeQuery];
+  const params: (string | number)[] = [safeQuery];
 
   if (options?.service) {
     sql += ` AND m.service = ?`;
