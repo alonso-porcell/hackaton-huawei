@@ -14,7 +14,7 @@ COPY features/ ./features/
 COPY features/ /features/
 COPY nginx/scenarios/ /scenarios/
 
-RUN pnpm build
+RUN pnpm build && cp src/*.html dist/src/ 2>/dev/null || true
 
 ENV NODE_ENV=production
 
