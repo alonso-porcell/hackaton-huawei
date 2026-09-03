@@ -3,6 +3,7 @@ import { hostHeaderValidation } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { SSEServerTransport } from "@modelcontextprotocol/server-legacy/sse";
 
+import { handleAgentMessage } from "./agent.js";
 import {
   injectDemoIncident,
   inspectConfig,
@@ -28,14 +29,28 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/", (_request, response) => {
+app.get("/", async (_request, response) => {
   response.setHeader("content-type", "text/html; charset=utf-8");
-  response.send(renderDashboardHtml());
+  response.send(await renderDashboardHtml());
 });
 
-app.get("/dashboard", (_request, response) => {
+app.get("/dashboard", async (_request, response) => {
   response.setHeader("content-type", "text/html; charset=utf-8");
-  response.send(renderDashboardHtml());
+  response.send(await renderDashboardHtml());
+});
+
+app.post("/api/chat", async (request, response, next) => {
+  try {
+    const prompt = String(request.body?.message ?? "");
+    if (!prompt.trim()) {
+      response.status(400).json({ error: "message is required" });
+      return;
+    }
+    const result = await handleAgentMessage(prompt);
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/health", (_request, response) => {
