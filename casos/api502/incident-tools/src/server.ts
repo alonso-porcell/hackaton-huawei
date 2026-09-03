@@ -14,7 +14,7 @@ import {
 import { renderLandingHtml } from "./landing.js";
 import { renderDashboardHtml } from "./dashboard.js";
 import { renderPipelineDashboardHtml } from "./pipeline-dashboard.js";
-import { getPipelineState, runOodaPipeline, setIncomingAlert } from "./pipeline.js";
+import { getPipelineState, runNode, runOodaPipeline, setIncomingAlert } from "./pipeline.js";
 import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
 import { adaptiveEmotionalHandler } from "./emotional-handler.js";
 import {
@@ -76,6 +76,16 @@ app.get("/api/pipeline/state", async (_request, response, next) => {
 app.post("/api/pipeline/run", async (_request, response, next) => {
   try {
     const result = await runOodaPipeline();
+    response.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/pipeline/node/:index", async (request, response, next) => {
+  try {
+    const index = Number(request.params.index);
+    const result = await runNode(index);
     response.json(result);
   } catch (err) {
     next(err);

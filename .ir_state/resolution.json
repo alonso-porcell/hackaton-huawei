@@ -1,5 +1,5 @@
 {
-  "patch_path": "/etc/auth-service/db_pool_config.yaml",
+  "patch_path": "config/auth-service/db_pool_settings.yaml",
   "tests_passed": true,
-  "summary": "Reconfiguración aplicada y validada exitosamente. Se incrementó max_connections en postgres-db y se reinició el pool de auth-service, restaurando la conectividad y estabilidad del servicio web."
+  "summary": "Reconfiguración aplicada y validada exitosamente. Se aumentó el límite de max_connections en postgres-db y se reinició el pool de conexiones en auth-service. Las pruebas de latencia y disponibilidad han pasado, confirmando que el sistema ha recuperado su estado estable."
 }

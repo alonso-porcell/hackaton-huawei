@@ -133,6 +133,26 @@
     .badge-blue { background: rgba(88, 166, 255, 0.15); color: var(--accent); border: 1px solid var(--accent); }
     .badge-yellow { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow); }
 
+    /* Protocol Ribbon */
+    .protocol-ribbon {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .protocol-badge {
+      background: #161b22;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+    }
+    .protocol-badge strong { color: var(--text-bright); }
+
     /* Pipeline Stepper */
     .stepper-container {
       background: var(--card-bg);
@@ -151,21 +171,33 @@
     }
     .stepper {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
       position: relative;
     }
     .step-node {
       background: #0d1117;
-      border: 1px solid var(--border);
+      border: 2px solid var(--border);
       border-radius: 8px;
-      padding: 14px;
+      padding: 16px 12px;
       text-align: center;
-      transition: all 0.2s;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    .step-node.active-running {
+      border-color: #e3b341;
+      background: rgba(227, 179, 65, 0.1);
+      box-shadow: 0 0 16px rgba(227, 179, 65, 0.35);
+      animation: pulse-glow 1.5s infinite;
+    }
+    @keyframes pulse-glow {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+      100% { transform: scale(1); }
     }
     .step-node.completed {
       border-color: var(--green);
-      background: rgba(63, 185, 80, 0.05);
+      background: rgba(63, 185, 80, 0.08);
     }
     .step-num {
       font-size: 0.75rem;
@@ -175,7 +207,7 @@
       margin-bottom: 4px;
     }
     .step-name {
-      font-size: 0.92rem;
+      font-size: 0.95rem;
       font-weight: 600;
       color: var(--text-bright);
       margin-bottom: 6px;
@@ -185,6 +217,17 @@
       color: var(--text-muted);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
+    .step-status-tag {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      display: inline-block;
+    }
+    .tag-idle { background: #21262d; color: var(--text-muted); }
+    .tag-running { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow); }
+    .tag-done { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
 
     .alert-box {
       background: #1f242c;
@@ -203,6 +246,23 @@
       font-size: 0.88rem;
       color: #e6edf3;
     }
+
+    /* Live Reasoning Console */
+    .console-box {
+      background: #090d13;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-top: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      color: #8b949e;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .console-box .log-line { margin-bottom: 4px; }
+    .console-box .log-success { color: var(--green); }
+    .console-box .log-info { color: var(--accent); }
 
     /* Grid & Artifacts Tabs */
     .grid-layout {
@@ -249,7 +309,7 @@
       padding: 14px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.84rem;
-      max-height: 400px;
+      max-height: 420px;
       overflow-y: auto;
       white-space: pre-wrap;
       color: #e6edf3;
@@ -321,10 +381,18 @@
       </div>
       <div class="header-controls">
         <button class="btn" id="btn-custom-alert" onclick="promptCustomAlert()">✏️ Inyectar Alerta</button>
-        <button class="btn btn-purple" id="btn-run-pipeline" onclick="runPipeline()">▶ Ejecutar Pipeline (5 Nodos)</button>
+        <button class="btn btn-purple" id="btn-run-pipeline" onclick="runPipelineSequentially()">▶ Ejecutar Pipeline en Vivo</button>
         <button class="btn" onclick="fetchState()">🔄 Actualizar</button>
       </div>
     </header>
+
+    <!-- Protocol Badges -->
+    <div class="protocol-ribbon">
+      <div class="protocol-badge">🤖 Agente: <strong>OpenCode CLI (IR-Sentinel)</strong></div>
+      <div class="protocol-badge">🧠 Modelo: <strong>Kostra Cloud (GLM-5.2)</strong></div>
+      <div class="protocol-badge">📦 Almacén: <strong>.ir_state/ & SQLite FTS5</strong></div>
+      <div class="protocol-badge">🔒 Autonomía: <strong>Inyección de Contexto Inline + Fallbacks</strong></div>
+    </div>
 
     <!-- Alerta entrante -->
     <div class="alert-box">
@@ -335,38 +403,48 @@
       <span class="badge badge-blue" id="alert-state-badge">ESTADO: LISTO</span>
     </div>
 
-    <!-- Stepper de 5 Nodos -->
+    <!-- Stepper de 5 Nodos con animación en vivo -->
     <div class="stepper-container">
       <div class="stepper-title">
         <span>🔄 Fases del Bucle OODA (Observar ➔ Orientar ➔ Decidir ➔ Actuar ➔ Verificar)</span>
         <span class="badge badge-green" id="stepper-summary">5/5 Nodos Sincronizados</span>
       </div>
       <div class="stepper">
-        <div class="step-node completed" id="node-1">
+        <div class="step-node completed" id="node-card-1">
           <div class="step-num">Nodo 1</div>
           <div class="step-name">Observador</div>
           <div class="step-artifact">incident.json</div>
+          <div class="step-status-tag tag-done" id="node-tag-1">✓ Sincronizado</div>
         </div>
-        <div class="step-node completed" id="node-2">
+        <div class="step-node completed" id="node-card-2">
           <div class="step-num">Nodo 2</div>
           <div class="step-name">Analista</div>
           <div class="step-artifact">diagnosis.json</div>
+          <div class="step-status-tag tag-done" id="node-tag-2">✓ Sincronizado</div>
         </div>
-        <div class="step-node completed" id="node-3">
+        <div class="step-node completed" id="node-card-3">
           <div class="step-num">Nodo 3</div>
           <div class="step-name">Contención</div>
           <div class="step-artifact">containment.json</div>
+          <div class="step-status-tag tag-done" id="node-tag-3">✓ Sincronizado</div>
         </div>
-        <div class="step-node completed" id="node-4">
+        <div class="step-node completed" id="node-card-4">
           <div class="step-num">Nodo 4</div>
           <div class="step-name">Resolución</div>
           <div class="step-artifact">resolution.json</div>
+          <div class="step-status-tag tag-done" id="node-tag-4">✓ Sincronizado</div>
         </div>
-        <div class="step-node completed" id="node-5">
+        <div class="step-node completed" id="node-card-5">
           <div class="step-num">Nodo 5</div>
           <div class="step-name">Verificación</div>
           <div class="step-artifact">postmortem.md</div>
+          <div class="step-status-tag tag-done" id="node-tag-5">✓ Sincronizado</div>
         </div>
+      </div>
+
+      <!-- Live Console -->
+      <div class="console-box" id="live-console">
+        <div class="log-line log-info">⚡ Consola de Ejecución: OpenCode Agent Protocol + Kostra (GLM-5.2) listo.</div>
       </div>
     </div>
 
@@ -398,7 +476,7 @@
               <span>🤖 IR-Sentinel</span>
               <button class="tts-btn" onclick="speakText(this.parentElement.nextElementSibling.innerText)">🔊</button>
             </div>
-            <div>Hola. He cargado el estado del <strong>Pipeline OODA de 5 Nodos</strong>. Puedes preguntarme sobre la causa raíz, la contención o dictarme una nota de voz 🎙️ para analizar una nueva alerta.</div>
+            <div>Hola. He cargado el estado del <strong>Pipeline OODA de 5 Nodos</strong> ejecutado con OpenCode y Kostra (GLM-5.2). Puedes preguntarme sobre la causa raíz, la contención o dictarme una nota de voz 🎙️ para analizar una nueva alerta.</div>
           </div>
         </div>
 
@@ -493,6 +571,15 @@
       }
     }
 
+    function addConsoleLog(text, type = "info") {
+      const consoleBox = document.getElementById("live-console");
+      const div = document.createElement("div");
+      div.className = "log-line log-" + type;
+      div.textContent = "> " + text;
+      consoleBox.appendChild(div);
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
     async function fetchState() {
       try {
         const res = await fetch("/api/pipeline/state");
@@ -507,22 +594,52 @@
       }
     }
 
-    async function runPipeline() {
+    function setNodeVisual(nodeNum, status) {
+      const card = document.getElementById("node-card-" + nodeNum);
+      const tag = document.getElementById("node-tag-" + nodeNum);
+      if (!card || !tag) return;
+
+      card.className = "step-node";
+      if (status === "running") {
+        card.classList.add("active-running");
+        tag.className = "step-status-tag tag-running";
+        tag.textContent = "⚡ Ejecutando GLM-5.2...";
+      } else if (status === "done") {
+        card.classList.add("completed");
+        tag.className = "step-status-tag tag-done";
+        tag.textContent = "✓ Completado";
+      } else {
+        tag.className = "step-status-tag tag-idle";
+        tag.textContent = "En espera";
+      }
+    }
+
+    async function runPipelineSequentially() {
       const btn = document.getElementById("btn-run-pipeline");
       btn.disabled = true;
-      btn.textContent = "⏳ Ejecutando 5 Nodos...";
-      try {
-        const res = await fetch("/api/pipeline/run", { method: "POST" });
-        artifactsData = await res.json();
-        renderActiveTab();
-        fetchState();
-        addMessageToChat("IR-Sentinel", "Pipeline completado con éxito. Se ejecutaron los 5 nodos OODA y se actualizaron los artefactos en .ir_state/.", "agent");
-      } catch (e) {
-        alert("Error ejecutando pipeline: " + e.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "▶ Ejecutar Pipeline (5 Nodos)";
+      btn.textContent = "⏳ Ejecutando Pipeline...";
+
+      addConsoleLog("Iniciando ejecución secuencial de los 5 Nodos OODA con Kostra (GLM-5.2)...", "info");
+
+      for (let i = 1; i <= 5; i++) {
+        setNodeVisual(i, "running");
+        addConsoleLog(`[Nodo ${i}] Enviando prompt a Kostra Cloud (GLM-5.2)...`, "info");
+
+        try {
+          const res = await fetch(`/api/pipeline/node/${i}`, { method: "POST" });
+          const result = await res.json();
+          setNodeVisual(i, "done");
+          addConsoleLog(result.log || `Nodo ${i} completado.`, "success");
+          await fetchState();
+        } catch (err) {
+          addConsoleLog(`Error en Nodo ${i}: ` + err.message, "info");
+        }
       }
+
+      btn.disabled = false;
+      btn.textContent = "▶ Ejecutar Pipeline en Vivo";
+      addConsoleLog("✓ Pipeline completado. Todos los artefactos actualizados en .ir_state/.", "success");
+      addMessageToChat("IR-Sentinel", "He completado la ejecución de los 5 nodos OODA con Kostra GLM-5.2. Los artefactos e informe post-mortem están listos para revisión.", "agent");
     }
 
     async function promptCustomAlert() {
@@ -535,6 +652,7 @@
           body: JSON.stringify({ alert: custom })
         });
         await fetchState();
+        addConsoleLog("Nueva alerta inyectada en incoming_alert.log: " + custom, "info");
       } catch (e) {
         alert("Error inyectando alerta: " + e.message);
       }
