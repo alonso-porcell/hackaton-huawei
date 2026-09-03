@@ -11,6 +11,7 @@ import {
   validateConfig,
   verifyRecovery,
 } from "./control.js";
+import { generateEmotionalResponse } from "./emotional-handler.js";
 import { recordIncident, searchMemory } from "./engram.js";
 
 
@@ -129,6 +130,30 @@ export function createIncidentMcpServer(): McpServer {
       annotations: { readOnlyHint: true, destructiveHint: false },
     },
     async () => toolResult(await verifyRecovery()),
+  );
+
+  server.registerTool(
+    "emotional_response",
+    {
+      description:
+        "Genera una respuesta emocional adaptada al arquetipo del usuario (SOUL.md S3+S4). Usa el disparador de personalidad y la matriz de exposición temporal para adaptar tono y contenido.",
+      inputSchema: z.object({
+        error: z.string().min(1).max(500).describe("Mensaje de error técnico"),
+        user_message: z.string().min(1).max(1000).describe("Mensaje del usuario para detectar arquetipo"),
+        retry_count: z.number().int().min(1).max(100).default(1).describe("Número de reintento (1=incipiente, 3-5=friccion, >5=cronica)"),
+        platform_tone: z.enum(["creative", "corporate"]).default("creative").describe("Tono de plataforma"),
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    async (input) =>
+      toolResult(
+        await generateEmotionalResponse({
+          error: input.error,
+          userMessage: input.user_message,
+          retryCount: input.retry_count,
+          platformTone: input.platform_tone,
+        }),
+      ),
   );
 
   server.registerTool(

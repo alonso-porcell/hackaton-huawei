@@ -16,6 +16,7 @@ import { renderDashboardHtml } from "./dashboard.js";
 import { renderPipelineDashboardHtml } from "./pipeline-dashboard.js";
 import { getPipelineState, runOodaPipeline, setIncomingAlert } from "./pipeline.js";
 import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
+import { adaptiveEmotionalHandler } from "./emotional-handler.js";
 import {
   deleteMemory,
   listMemories,
@@ -231,14 +232,13 @@ app.delete("/engram/memories/:id", (request, response, next) => {
 });
 
 app.use(
-  (
+  async (
     error: unknown,
-    _request: express.Request,
+    request: express.Request,
     response: express.Response,
     _next: express.NextFunction,
   ) => {
-    const message = error instanceof Error ? error.message : "unexpected error";
-    response.status(500).json({ error: message });
+    await adaptiveEmotionalHandler(error, request, response);
   },
 );
 
