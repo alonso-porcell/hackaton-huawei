@@ -1,0 +1,86 @@
+name: api502
+
+services:
+  api:
+    build:
+      context: ./api
+    image: api502-api:local
+    networks:
+      - incident
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+
+  gateway:
+    build:
+      context: ./nginx
+    image: api502-nginx:local
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8088:80"
+    networks:
+      - incident
+    volumes:
+      - nginx_control:/control
+      - nginx_logs:/logs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/gateway-health"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
+  incident-tools:
+    build:
+      context: .
+      dockerfile: ./incident-tools/Dockerfile
+    image: api502-incident-tools:local
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://api:8000/health
+      CONTROL_DIR: /control
+      LOG_DIR: /logs
+      PORT: "3001"
+      PROXY_URL: http://gateway/health
+      SCENARIO_DIR: /scenarios
+    ports:
+      - "127.0.0.1:3001:3001"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    networks:
+      - incident
+    volumes:
+      - nginx_control:/control
+      - nginx_logs:/logs:ro
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  incident:
+    driver: bridge
+
+volumes:
+  nginx_control:
+  nginx_logs:

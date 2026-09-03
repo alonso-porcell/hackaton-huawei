@@ -1,0 +1,105 @@
+import express from "express";
+import { hostHeaderValidation } from "@modelcontextprotocol/express";
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import { SSEServerTransport } from "@modelcontextprotocol/server-legacy/sse";
+
+import {
+  injectDemoIncident,
+  inspectConfig,
+  inspectService,
+  readLogs,
+  runDemoRecovery,
+} from "./control.js";
+import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
+
+
+const port = Number(process.env.PORT ?? 3001);
+const app = express();
+const legacyTransports = new Map<string, SSEServerTransport>();
+
+app.use(
+  hostHeaderValidation([
+    "127.0.0.1",
+    "localhost",
+    "host.docker.internal",
+    "incident-tools",
+  ]),
+);
+app.use(express.json());
+
+app.get("/health", (_request, response) => {
+  response.json({ status: "ok", service: "api502-incident-tools" });
+});
+
+app.get("/demo/status", async (_request, response, next) => {
+  try {
+    response.json({
+      service: await inspectService(),
+      config: await inspectConfig(),
+      logs: await readLogs(30),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/demo/inject", async (_request, response, next) => {
+  try {
+    response.json(await injectDemoIncident());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/demo/recover", async (request, response, next) => {
+  try {
+    const incidentId = String(request.body?.incidentId ?? "INC-API502-DEMO");
+    response.json(await runDemoRecovery(incidentId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/mcp", async (_request, response, next) => {
+  try {
+    const transport = new SSEServerTransport("/messages", response);
+    legacyTransports.set(transport.sessionId, transport);
+    response.on("close", () => {
+      legacyTransports.delete(transport.sessionId);
+    });
+    await createIncidentMcpServer().connect(transport);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/messages", async (request, response) => {
+  const sessionId = String(request.query.sessionId ?? "");
+  const transport = legacyTransports.get(sessionId);
+
+  if (!transport) {
+    response.status(400).json({ error: "unknown MCP session" });
+    return;
+  }
+
+  await transport.handlePostMessage(request, response, request.body);
+});
+
+app.post("/mcp", toNodeHandler(mcpHandler));
+app.delete("/mcp", toNodeHandler(mcpHandler));
+
+app.use(
+  (
+    error: unknown,
+    _request: express.Request,
+    response: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    const message = error instanceof Error ? error.message : "unexpected error";
+    response.status(500).json({ error: message });
+  },
+);
+
+app.listen(port, "0.0.0.0", () => {
+  console.log(`api502 incident tools listening on ${port}`);
+});

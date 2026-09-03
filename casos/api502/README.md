@@ -2,10 +2,11 @@
 
 ## Estado
 
-**Propuesta seleccionada, pendiente de definición del stack.**
+**MVP operativo y validado localmente.**
 
-Este documento describe el caso de uso. En esta etapa no contiene código ni una
-implementación definitiva.
+El núcleo de mayor puntaje ya contiene API, Nginx, herramientas MCP, agente de
+OpenCode, optimización de logs y pruebas automatizadas. Engram, RTK, voz y un
+dashboard dedicado quedan separados como mejoras posteriores al flujo crítico.
 
 ## Resumen
 
@@ -40,20 +41,46 @@ verificar que el servicio vuelva a responder correctamente.
 - Interacción por texto, con voz como mejora de experiencia.
 - Manejo de al menos una herramienta que falle o entregue información incompleta.
 
-## Stack en discusión
+## Stack implementado
 
 - Kostra Cloud con GLM-5.2.
 - OpenCode como agente y orquestador.
-- Engram como memoria.
 - Nginx como proxy del servicio afectado.
-- API REST en Node.js administrada con pnpm.
+- API REST en Python/FastAPI.
+- Herramientas MCP en TypeScript administradas con pnpm.
 - Linux y Docker como entorno reproducible.
 - Herramientas especializadas para observación, recuperación y verificación.
-- Optimizador de contexto y tokens para logs y resultados de herramientas.
-- Voz local y gratuita para transcripción y síntesis.
+- Optimizador determinista de logs y resultados de herramientas.
+- pytest, Gherkin/Cucumber.js y Stryker para calidad verificable.
 
-La selección final de componentes, versiones e integración se documentará antes
-de comenzar el desarrollo.
+Engram, RTK, Moonshine y Kokoro continúan en el roadmap, pero no bloquean el MVP.
+
+## Documentación
+
+- [Arquitectura y controles](./docs/architecture.md)
+- [Inicio rápido desde el escritorio Linux](./docs/quickstart.md)
+- [Contratos de herramientas MCP](./docs/tool-contracts.md)
+- [Pruebas y resultados](./docs/testing.md)
+- [Evidencia para la rúbrica](./docs/rubric-evidence.md)
+- [Guion de demostración](./docs/demo-script.md)
+- [Auditoría del stack local](./docs/stack-audit.md)
+- [Traspaso autocontenido para Antigravity](./HANDOFF_ANTIGRAVITY.md)
+
+## Comportamiento de OpenCode
+
+OpenCode debe iniciarse desde este directorio para cargar [`AGENTS.md`](./AGENTS.md),
+que contiene las reglas persistentes del caso. El agente principal está definido
+en [`.opencode/agents/ir-sentinel.md`](./.opencode/agents/ir-sentinel.md).
+
+Los procedimientos especializados se cargan bajo demanda:
+
+- [`diagnose-api502`](./.opencode/skills/diagnose-api502/SKILL.md)
+- [`recover-nginx`](./.opencode/skills/recover-nginx/SKILL.md)
+- [`write-postmortem`](./.opencode/skills/write-postmortem/SKILL.md)
+
+Las restricciones críticas descritas en estos archivos también deberán aplicarse
+en el código de las herramientas MCP y comprobarse mediante pruebas; no dependerán
+únicamente de las instrucciones enviadas al modelo.
 
 ## Criterios iniciales de éxito
 
@@ -64,3 +91,13 @@ de comenzar el desarrollo.
 - El agente registra un informe breve y sanitizado del incidente.
 - La demostración completa puede ejecutarse en menos de cuatro minutos.
 
+## Arranque técnico
+
+Desde este directorio:
+
+```bash
+docker compose up --build --wait
+```
+
+Luego se opera desde OpenCode en el escritorio Linux; consulta la
+[guía de inicio rápido](./docs/quickstart.md).

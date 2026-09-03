@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "mutate": [
+    "src/policy.ts",
+    "src/logs.ts"
+  ],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "pnpm test"
+  },
+  "coverageAnalysis": "off",
+  "buildCommand": "pnpm build",
+  "reporters": [
+    "clear-text",
+    "progress",
+    "html"
+  ],
+  "htmlReporter": {
+    "fileName": "reports/mutation.html"
+  },
+  "thresholds": {
+    "high": 80,
+    "low": 60,
+    "break": 50
+  }
+}
+
