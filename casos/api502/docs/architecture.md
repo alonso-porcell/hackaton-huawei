@@ -25,14 +25,14 @@ flowchart LR
 |---|---|---|
 | API afectada | Endpoint `/health` que continúa sano | Python 3.12, FastAPI |
 | Gateway | Punto de acceso que puede quedar mal configurado | Nginx 1.29 |
-| Incident Tools | Evidencia, política de recuperación y ocho herramientas MCP | Node.js 22, TypeScript 6, pnpm 11 |
+| Incident Tools | Evidencia, política de recuperación, ocho herramientas MCP y Dashboard web | Node.js 22, TypeScript 6, pnpm 11 |
 | Agente | Decide el flujo y explica evidencia, riesgo y resultado | OpenCode 1.18, Kostra, GLM-5.2 |
 | Entorno | Aislamiento y red reproducibles | Docker Compose, Linux |
 
 El único endpoint del servicio afectado publicado al host es Nginx en
 `127.0.0.1:8088`. La API no publica puertos. El servidor operativo se publica
-localmente en `127.0.0.1:3001` para que OpenCode, ejecutado en el escritorio Linux,
-pueda conectarse por MCP.
+localmente en `127.0.0.1:3001` (Dashboard web en `/` y `/dashboard`, y MCP SSE en `/mcp`)
+para que el operador y OpenCode puedan interactuar.
 
 ## Controles que no dependen del modelo
 

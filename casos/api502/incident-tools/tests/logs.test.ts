@@ -50,4 +50,26 @@ describe("compressLogLines", () => {
     assert.equal(result.patterns[0]?.count, 2);
     assert.match(result.patterns[0]?.message ?? "", /8999/);
   });
+
+  it("handles empty log lines gracefully", () => {
+    const result = compressLogLines([]);
+
+    assert.equal(result.originalCount, 0);
+    assert.equal(result.uniqueCount, 0);
+    assert.equal(result.discardedAsDuplicates, 0);
+    assert.deepEqual(result.patterns, []);
+  });
+
+  it("handles mixed unstructured and formatted logs without loss", () => {
+    const result = compressLogLines([
+      "custom application error: database timeout",
+      "custom application error: database timeout",
+      "worker process exited on signal 9",
+    ]);
+
+    assert.equal(result.originalCount, 3);
+    assert.equal(result.uniqueCount, 2);
+    assert.equal(result.discardedAsDuplicates, 1);
+    assert.equal(result.patterns.length, 2);
+  });
 });

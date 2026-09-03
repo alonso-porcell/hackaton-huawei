@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { After, Given, Then, When } from "@cucumber/cucumber";
 
 
-const toolsUrl = process.env.TOOLS_URL ?? "http://host.docker.internal:3001";
+const toolsUrl = process.env.TOOLS_URL ?? "http://127.0.0.1:3001";
 let injected: Record<string, any> | null = null;
 let recovery: Record<string, any> | null = null;
 

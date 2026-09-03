@@ -10,6 +10,7 @@ import {
   readLogs,
   runDemoRecovery,
 } from "./control.js";
+import { renderDashboardHtml } from "./dashboard.js";
 import { createIncidentMcpServer, mcpHandler } from "./mcp.js";
 
 
@@ -26,6 +27,16 @@ app.use(
   ]),
 );
 app.use(express.json());
+
+app.get("/", (_request, response) => {
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.send(renderDashboardHtml());
+});
+
+app.get("/dashboard", (_request, response) => {
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.send(renderDashboardHtml());
+});
 
 app.get("/health", (_request, response) => {
   response.json({ status: "ok", service: "api502-incident-tools" });

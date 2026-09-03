@@ -8,7 +8,7 @@
     "dev": "tsx src/server.ts",
     "start": "node dist/src/server.js",
     "test": "tsx --test tests/*.test.ts",
-    "test:acceptance": "pnpm build && cucumber-js ../features/*.feature --import dist/features/step-definitions/*.js",
+    "test:acceptance": "pnpm build && cucumber-js features/**/*.feature --import dist/features/step-definitions/*.js",
     "test:mutation": "stryker run"
   },
   "dependencies": {

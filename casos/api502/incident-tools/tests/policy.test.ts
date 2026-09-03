@@ -61,4 +61,27 @@ describe("canStartRecovery", () => {
     assert.equal(decision.allowed, false);
     assert.match(decision.reasons.join(" "), /reversible/i);
   });
+
+  it("rejects recovery when backend status is 0 or unreachable (incomplete telemetry)", () => {
+    const decision = canStartRecovery({ ...safeDiagnosis, backendStatus: 0 });
+
+    assert.equal(decision.allowed, false);
+    assert.match(decision.reasons.join(" "), /backend must be healthy/i);
+  });
+
+  it("rejects recovery and aggregates all reasons when multiple conditions fail simultaneously", () => {
+    const decision = canStartRecovery({
+      confidence: 45,
+      backendStatus: 500,
+      rootCause: "unknown",
+      reversible: false,
+    });
+
+    assert.equal(decision.allowed, false);
+    assert.equal(decision.reasons.length, 4);
+    assert.match(decision.reasons.join(" "), /confidence/i);
+    assert.match(decision.reasons.join(" "), /backend/i);
+    assert.match(decision.reasons.join(" "), /root cause/i);
+    assert.match(decision.reasons.join(" "), /reversible/i);
+  });
 });

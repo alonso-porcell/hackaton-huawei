@@ -10,6 +10,8 @@ COPY incident-tools/package.json incident-tools/pnpm-lock.yaml incident-tools/pn
 RUN pnpm install --frozen-lockfile
 
 COPY incident-tools/ ./
+COPY features/ ./features/
+COPY features/ /features/
 COPY nginx/scenarios/ /scenarios/
 
 RUN pnpm build
