@@ -1,0 +1,8 @@
+{
+  "severity": "CRITICAL",
+  "affected_services": [
+    "ssh",
+    "firewall"
+  ],
+  "log_summary": "SSH brute force attack detected from 192.168.1.50; Firewall rule misconfiguration"
+}
