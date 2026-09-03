@@ -5,4 +5,7 @@ node_modules/
 dist/
 .stryker-tmp/
 reports/
-
+.engram/
+*.sqlite
+*.sqlite3
+*.db
