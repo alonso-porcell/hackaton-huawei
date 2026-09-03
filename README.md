@@ -1,3 +1,4 @@
+# https://owasp.org/www-project-top-10-for-large-language-model-applications/
 # Agente Autónomo de Incident Response (IR-Agent)
 
 Arquitectura, configuración de contexto y pipeline de ejecución técnica para un Agente Autónomo de Respuesta ante Incidentes, optimizado para inferencia en Kostra Cloud (`glm-5.2`), orquestación vía OpenCode/Claude Code CLI y aislamiento estricto en contenedores Docker.
