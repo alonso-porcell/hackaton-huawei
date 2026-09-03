@@ -1,7 +1,7 @@
 {
   "severity": "ERROR",
   "affected_services": [
-    "web-service"
+    "servicio web"
   ],
-  "log_summary": "ERROR: Timeout en servicio web a las 10:32:15"
+  "log_summary": "Timeout en servicio web a las 10:32:15"
 }

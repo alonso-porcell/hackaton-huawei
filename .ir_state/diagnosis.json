@@ -3,7 +3,7 @@
   "confidence": 0.85,
   "evidence": [
     "Alerta original: ERROR: Timeout en servicio web a las 10:32:15",
-    "Servicios afectados: web-service",
+    "Servicios afectados: servicio web",
     "Diagnostico sintetizado por orquestador (el modelo no dispuso de herramientas)."
   ]
 }
